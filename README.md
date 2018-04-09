@@ -17,12 +17,12 @@ $ python3 cot.py
 Start Cooperative Training...
 batch:   0      nll_oracle:  11.429975
 batch:	 0      nll_test     8.524782
-cooptrain epoch# 0 jsd  8.365606
+cooptrain epoch# 0  jsd      8.365606
 batch:   100    nll_oracle:  10.475937
-batch:	 100    nll_test  7.9382834
-cooptrain epoch# 1 jsd  7.330582
+batch:	 100    nll_test     7.9382834
+cooptrain epoch# 1  jsd      7.330582
 batch:   200    nll_oracle:  10.38681
-batch:	 200    nll_test  7.868909
+batch:	 200    nll_test     7.868909
 ... ...
 ```
 
