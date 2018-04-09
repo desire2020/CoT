@@ -114,7 +114,7 @@ def main():
     target_params = pickle.load(open('save/target_params_py3.pkl', 'rb'))
     target_lstm = TARGET_LSTM(vocab_size, BATCH_SIZE, 32, 32, SEQ_LENGTH, START_TOKEN, target_params) # The oracle model
 
-    mediator = Generator(vocab_size, BATCH_SIZE, EMB_DIM*2, HIDDEN_DIM*2, SEQ_LENGTH, START_TOKEN, name="mediator")
+    mediator = Generator(vocab_size, BATCH_SIZE*2, EMB_DIM*2, HIDDEN_DIM*2, SEQ_LENGTH, START_TOKEN, name="mediator")
 
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
@@ -154,8 +154,8 @@ def main():
         # Train the generator for one step
         for it in range(1):
             samples = generator.generate(sess)
-            rewards = mediator.get_reward(sess, samples)
-            feed = {generator.x: samples, generator.rewards: rewards}
+            rewards = mediator.get_reward(sess, np.concatenate([samples, samples], axis=0))
+            feed = {generator.x: samples, generator.rewards: rewards[0:BATCH_SIZE]}
             _ = sess.run(generator.g_updates, feed_dict=feed)
         # Test
         if epoch_idx % 100 == 0 or epoch_idx == TOTAL_BATCH - 1:
@@ -186,16 +186,14 @@ def main():
                 collected_x.append(x_batch)
             collected_x = np.reshape(collected_x, [-1, SEQ_LENGTH])
             np.random.shuffle(collected_x)
-            collected_x = np.reshape(collected_x, [-1, BATCH_SIZE, SEQ_LENGTH])
+            collected_x = np.reshape(collected_x, [-1, BATCH_SIZE*2, SEQ_LENGTH])
             for it in range(1):
                 feed = {
                     mediator.x: collected_x[it],
                 }
                 js_dist = sess.run(mediator.likelihood_loss, feed)
                 jsd.append(js_dist)
-                sess.run(mediator.dropout_on)
                 _ = sess.run(mediator.likelihood_updates, feed)
-                sess.run(mediator.dropout_off)
             if epoch_idx % 10 == 0:
                 js_dist = np.mean(jsd)
                 print("mediator cooptrain iter#%d, balanced_nll %f" % (epoch_idx, js_dist))

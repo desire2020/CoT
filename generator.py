@@ -240,7 +240,7 @@ class Generator(object):
         def unit(hidden_memory_tuple):
             hidden_state, c_prev = tf.unstack(hidden_memory_tuple)
             # hidden_state : batch x hidden_dim
-            hidden_state = tf.nn.dropout(hidden_state, self.dropout_keep_rate)
+            # hidden_state = tf.nn.dropout(hidden_state, self.dropout_keep_rate)
             logits = tf.matmul(hidden_state, self.Wo) + self.bo
             # output = tf.nn.softmax(logits)
             return logits
