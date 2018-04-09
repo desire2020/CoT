@@ -1,7 +1,7 @@
 # Cooperative Training
 Experiment Code for Paper ``Effective Generative Modeling via Cooperative Training''
 
-![](./figure/cot.pdf)
+![](https://github.com/desire2020/Cooperative-Training/blob/master/figure/cot.pdf)
 ## Requirements
 * Python 3.x
 * tensorflow >= 1.6.0
