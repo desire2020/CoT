@@ -1,5 +1,5 @@
 # Cooperative Training
-Experiment Code for Paper ``Effective Generative Modeling via Cooperative Training''
+Experiment Code for Paper ``CoT: Cooperative Training for Generative Modeling''
 
 ![](./figure/cot.png)
 ## Requirements
