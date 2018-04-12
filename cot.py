@@ -13,19 +13,10 @@ EMB_DIM = 32 # embedding dimension
 HIDDEN_DIM = 32 # hidden state dimension of lstm cell
 SEQ_LENGTH = 20 # sequence length
 START_TOKEN = 0
-PRE_EPOCH_NUM = 0 # supervise (maximum likelihood estimation) epochs
+PRE_EPOCH_NUM = 0 # supervise (maximum likelihood estimation) epochs (not recommended)
 SEED = 88
 BATCH_SIZE = 64
-
-#########################################################################################
-#  Discriminator  Hyper-parameters
-#########################################################################################
-dis_embedding_dim = 64
-dis_filter_sizes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20]
-dis_num_filters = [100, 200, 200, 200, 200, 100, 100, 100, 100, 100, 160, 160]
-dis_dropout_keep_prob = 0.75
-dis_l2_reg_lambda = 0.2
-dis_batch_size = 64
+M_DROPOUT_RATE = 0.5 # Dropout rate of M (optional)
 
 #########################################################################################
 #  Basic Training Parameters
@@ -114,7 +105,7 @@ def main():
     target_params = pickle.load(open('save/target_params_py3.pkl', 'rb'))
     target_lstm = TARGET_LSTM(vocab_size, BATCH_SIZE, 32, 32, SEQ_LENGTH, START_TOKEN, target_params) # The oracle model
 
-    mediator = Generator(vocab_size, BATCH_SIZE*2, EMB_DIM*2, HIDDEN_DIM*2, SEQ_LENGTH, START_TOKEN, name="mediator")
+    mediator = Generator(vocab_size, BATCH_SIZE*2, EMB_DIM*2, HIDDEN_DIM*2, SEQ_LENGTH, START_TOKEN, name="mediator", dropout_rate=M_DROPOUT_RATE)
 
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
@@ -130,7 +121,7 @@ def main():
     log = open('save/experiment-log.txt', 'w')
     log_nll = open('save/experiment-log-nll.txt', 'w')
     log_jsd = open('save/experiment-log-jsd.txt', 'w')
-    #  pre-train generator
+    #  pre-train generator (default 0 epochs)(not recommended)
     print('Start pre-training...')
     log.write('pre-training...\n')
     for epoch in range(PRE_EPOCH_NUM):
@@ -150,7 +141,7 @@ def main():
 
     print('#########################################################################')
     print('Start Cooperative Training...')
-    for epoch_idx in range(TOTAL_BATCH):
+    for iter_idx in range(TOTAL_BATCH):
         # Train the generator for one step
         for it in range(1):
             samples = generator.generate(sess)
@@ -158,24 +149,21 @@ def main():
             feed = {generator.x: samples, generator.rewards: rewards[0:BATCH_SIZE]}
             _ = sess.run(generator.g_updates, feed_dict=feed)
         # Test
-        if epoch_idx % 100 == 0 or epoch_idx == TOTAL_BATCH - 1:
+        if iter_idx % 100 == 0 or iter_idx == TOTAL_BATCH - 1:
             generate_samples(sess, generator, BATCH_SIZE, generated_num, negative_file)
             likelihood_data_loader.create_batches(negative_file)
             test_loss = target_loss(sess, target_lstm, likelihood_data_loader)
-            buffer = 'batch:\t' + str(epoch_idx) + '\tnll_oracle:\t' + str(test_loss) + '\n'
-            print('batch: ', epoch_idx, 'nll_oracle: ', test_loss)
+            buffer = 'batch:\t' + str(iter_idx) + '\tnll_oracle:\t' + str(test_loss) + '\n'
+            print('batch: ', iter_idx, 'nll_oracle: ', test_loss)
             log_nll.write(buffer)
-        if epoch_idx % 100 == 0:
+        if iter_idx % 100 == 0:
             test_loss = target_loss(sess, generator, val_data_loader)
-            print('batch:\t', epoch_idx, 'nll_test ', test_loss)
-            buffer = 'batch:\t'+ str(epoch_idx) + '\tnll_test:\t' + str(test_loss) + '\n'
+            print('batch:\t', iter_idx, 'nll_test ', test_loss)
+            buffer = 'batch:\t'+ str(iter_idx) + '\tnll_test:\t' + str(test_loss) + '\n'
             log_nll.write(buffer)
-        # Update roll-out parameters
-#         if epoch_idx % 30 == 0:
-#            generate_samples(sess, generator, BATCH_SIZE, generated_num, negative_file)
-        # Train the discriminator
+        # Train the mediator
         for _ in range(1):
-            jsd = []
+            bnll_ = []
             collected_x = []
             ratio = 2
             for it in range(ratio):
@@ -191,17 +179,19 @@ def main():
                 feed = {
                     mediator.x: collected_x[it],
                 }
-                js_dist = sess.run(mediator.likelihood_loss, feed)
-                jsd.append(js_dist)
+                bnll = sess.run(mediator.likelihood_loss, feed)
+                bnll_.append(bnll)
+                sess.run(mediator.dropout_on)
                 _ = sess.run(mediator.likelihood_updates, feed)
-            if epoch_idx % 10 == 0:
-                js_dist = np.mean(jsd)
-                print("mediator cooptrain iter#%d, balanced_nll %f" % (epoch_idx, js_dist))
-                log.write("%d\t%f\n" % (epoch_idx, js_dist))
-        if epoch_idx % gen_data_loader.num_batch == 0:
+                sess.run(mediator.dropout_off)
+            if iter_idx % 10 == 0:
+                bnll = np.mean(bnll_)
+                print("mediator cooptrain iter#%d, balanced_nll %f" % (iter_idx, bnll))
+                log.write("%d\t%f\n" % (iter_idx, bnll))
+        if iter_idx % gen_data_loader.num_batch == 0:
             jsd = jsd_calculate(sess, generator, target_lstm)
-            print('cooptrain epoch#', epoch_idx // gen_data_loader.num_batch, 'jsd ', jsd)
-            log_jsd.write("%d\t%f\n" % (epoch_idx // gen_data_loader.num_batch, jsd))
+            print('cooptrain epoch#', iter_idx // gen_data_loader.num_batch, 'jsd ', jsd)
+            log_jsd.write("%d\t%f\n" % (iter_idx // gen_data_loader.num_batch, jsd))
 
     log.close()
     log_nll.close()

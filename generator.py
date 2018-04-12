@@ -5,7 +5,7 @@ from tensorflow.python.ops import tensor_array_ops, control_flow_ops
 class Generator(object):
     def __init__(self, num_emb, batch_size, emb_dim, hidden_dim,
                  sequence_length, start_token,
-                 learning_rate=1e-3, reward_gamma=0.95, name="generator"):
+                 learning_rate=1e-2, reward_gamma=0.95, name="generator", dropout_rate=0.5):
         self.num_emb = num_emb
         self.batch_size = batch_size
         self.emb_dim = emb_dim
@@ -21,7 +21,7 @@ class Generator(object):
         self.grad_clip = 5.0
         self.name = name
         self.dropout_keep_rate = tf.Variable(float(1.0), trainable=False)
-        self.dropout_on = self.dropout_keep_rate.assign(0.5)
+        self.dropout_on = self.dropout_keep_rate.assign(dropout_rate)
         self.dropout_off = self.dropout_keep_rate.assign(1.0)
         self.expected_reward = tf.Variable(tf.zeros([self.sequence_length]))
 
@@ -129,7 +129,7 @@ class Generator(object):
         #######################################################################################################
         self.g_loss = -tf.reduce_sum(
             self.g_predictions * (self.rewards - self.log_predictions)
-        ) / batch_size / sequence_length
+        ) / batch_size #/ sequence_length
         g_opt = self.g_optimizer(self.learning_rate)
 
         self.g_grad, _ = tf.clip_by_global_norm(tf.gradients(self.g_loss, self.g_params), self.grad_clip)
@@ -240,7 +240,7 @@ class Generator(object):
         def unit(hidden_memory_tuple):
             hidden_state, c_prev = tf.unstack(hidden_memory_tuple)
             # hidden_state : batch x hidden_dim
-            # hidden_state = tf.nn.dropout(hidden_state, self.dropout_keep_rate)
+            hidden_state = tf.nn.dropout(hidden_state, self.dropout_keep_rate)
             logits = tf.matmul(hidden_state, self.Wo) + self.bo
             # output = tf.nn.softmax(logits)
             return logits
