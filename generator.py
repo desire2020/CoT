@@ -54,10 +54,8 @@ class Generator(object):
             h_t = self.g_recurrent_unit(x_t, h_tm1)  # hidden_memory_tuple
             o_t = self.g_output_unit(h_t)  # batch x vocab , logits not prob
             log_prob = tf.nn.log_softmax(o_t)
-            T_t = tf.stop_gradient(tf.reduce_max(-log_prob, axis=-1, keepdims=True))
             next_token = tf.cast(tf.reshape(tf.multinomial(log_prob, 1), [self.batch_size]), tf.int32)
             x_tp1 = tf.one_hot(next_token, self.num_emb, 1.0, 0.0)
-            # x_tp1 = tf.nn.softmax(x_tp1 * T_t + log_prob)
             x_tp1 = tf.matmul(x_tp1, self.g_embeddings)
 
             gen_o = gen_o.write(i, tf.reduce_sum(tf.multiply(tf.one_hot(next_token, self.num_emb, 1.0, 0.0),
@@ -92,9 +90,7 @@ class Generator(object):
             log_prob = tf.nn.log_softmax(o_t)
             o_t = tf.nn.softmax(o_t)
             g_predictions = g_predictions.write(i, o_t)  # batch x vocab_size
-            T_t = tf.stop_gradient(tf.reduce_max(-log_prob, axis=-1, keepdims=True))
             x_tp1 = ta_emb_x.read(i)
-            # x_tp1 = tf.nn.softmax(x_tp1 * T_t + log_prob)
             log_predictions = log_predictions.write(i, log_prob)
             x_tp1 = tf.matmul(x_tp1, self.g_embeddings)
             return i + 1, x_tp1, h_t, g_predictions, log_predictions
