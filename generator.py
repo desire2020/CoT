@@ -5,7 +5,7 @@ from tensorflow.python.ops import tensor_array_ops, control_flow_ops
 class Generator(object):
     def __init__(self, num_emb, batch_size, emb_dim, hidden_dim,
                  sequence_length, start_token,
-                 learning_rate=1e-2, reward_gamma=0.95, name="generator", dropout_rate=0.5):
+                 learning_rate=1e-3, reward_gamma=0.95, name="generator", dropout_rate=0.5):
         self.num_emb = num_emb
         self.batch_size = batch_size
         self.emb_dim = emb_dim
@@ -18,7 +18,6 @@ class Generator(object):
         self.d_params = []
         self.temperature = 1.0
         self.create_recurrent_unit = self.create_recurrent_unit_LSTM
-        self.grad_clip = 5.0
         self.name = name
         self.dropout_keep_rate = tf.Variable(float(1.0), trainable=False)
         self.dropout_on = self.dropout_keep_rate.assign(dropout_rate)
@@ -115,10 +114,10 @@ class Generator(object):
         ) / (self.sequence_length * self.batch_size)
 
         # training updates
-        pretrain_opt = self.g_optimizer(self.learning_rate)
+        pretrain_opt = self.g_optimizer(self.learning_rate, beta1=0.9, beta2=0.99)
 
-        self.pretrain_grad, _ = tf.clip_by_global_norm(tf.gradients(self.likelihood_loss, self.g_params), self.grad_clip)
-        self.likelihood_updates = pretrain_opt.apply_gradients(zip(self.pretrain_grad, self.g_params))
+
+        self.likelihood_updates = pretrain_opt.minimize(self.likelihood_loss, var_list=self.g_params)
 
         #######################################################################################################
         #  Unsupervised Training
@@ -126,10 +125,9 @@ class Generator(object):
         self.g_loss = -tf.reduce_sum(
             self.g_predictions * (self.rewards - self.log_predictions)
         ) / batch_size #/ sequence_length
-        g_opt = self.g_optimizer(self.learning_rate)
+        g_opt = self.g_optimizer(self.learning_rate, beta1=0.9, beta2=0.99)
 
-        self.g_grad, _ = tf.clip_by_global_norm(tf.gradients(self.g_loss, self.g_params), self.grad_clip)
-        self.g_updates = g_opt.apply_gradients(zip(self.g_grad, self.g_params))
+        self.g_updates = g_opt.minimize(self.g_loss, var_list=self.g_params)
 
     def generate(self, sess):
         outputs = sess.run(self.gen_x)
