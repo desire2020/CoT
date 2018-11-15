@@ -105,7 +105,7 @@ def main():
     target_params = pickle.load(open('save/target_params_py3.pkl', 'rb'))
     target_lstm = TARGET_LSTM(vocab_size, BATCH_SIZE, 32, 32, SEQ_LENGTH, START_TOKEN, target_params) # The oracle model
 
-    mediator = Generator(vocab_size, BATCH_SIZE*2, EMB_DIM*2, HIDDEN_DIM*2, SEQ_LENGTH, START_TOKEN, name="mediator", dropout_rate=M_DROPOUT_RATE, learning_rate=3e-3)
+    mediator = Generator(vocab_size, BATCH_SIZE, EMB_DIM*2, HIDDEN_DIM*2, SEQ_LENGTH, START_TOKEN, name="mediator", dropout_rate=M_DROPOUT_RATE, learning_rate=3e-3)
 
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
@@ -145,8 +145,8 @@ def main():
         # Train the generator for one step
         for it in range(1):
             samples = generator.generate(sess)
-            rewards = mediator.get_reward(sess, np.concatenate([samples, samples], axis=0))
-            feed = {generator.x: samples, generator.rewards: rewards[0:BATCH_SIZE]}
+            rewards = mediator.get_reward(sess, samples)
+            feed = {generator.x: samples, generator.rewards: rewards}
             _ = sess.run(generator.g_updates, feed_dict=feed)
         # Test
         if iter_idx % 100 == 0 or iter_idx == TOTAL_BATCH - 1:
@@ -165,13 +165,9 @@ def main():
         for _ in range(1):
             bnll_ = []
             collected_x = []
-            ratio = 2
+            ratio = 1
             for it in range(ratio):
-                if it % 2 == 0:
-                    x_batch = gen_data_loader.next_batch()
-                else:
-                    x_batch = generator.generate(sess)
-                collected_x.append(x_batch)
+                collected_x.extend([gen_data_loader.next_batch(), generator.generate(sess)])
             collected_x = np.reshape(collected_x, [-1, SEQ_LENGTH])
             np.random.shuffle(collected_x)
             collected_x = np.reshape(collected_x, [-1, BATCH_SIZE*2, SEQ_LENGTH])
