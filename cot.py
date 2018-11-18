@@ -3,6 +3,7 @@ import tensorflow as tf
 import random
 from dataloader import Gen_Data_loader
 from generator import Generator
+from mediator import Mediator
 from target_lstm import TARGET_LSTM
 import pickle
 
@@ -17,6 +18,7 @@ PRE_EPOCH_NUM = 0 # supervise (maximum likelihood estimation) epochs (not recomm
 SEED = 88
 BATCH_SIZE = 64
 M_DROPOUT_RATE = 0.5 # Dropout rate of M (optional)
+RESTORE = False
 
 #########################################################################################
 #  Basic Training Parameters
@@ -97,6 +99,7 @@ def main():
     assert START_TOKEN == 0
 
     gen_data_loader = Gen_Data_loader(BATCH_SIZE, SEQ_LENGTH)
+    gan_data_loader = Gen_Data_loader(BATCH_SIZE, SEQ_LENGTH)
     val_data_loader = Gen_Data_loader(BATCH_SIZE, SEQ_LENGTH)
     likelihood_data_loader = Gen_Data_loader(BATCH_SIZE, SEQ_LENGTH) # For testing
     vocab_size = 5000
@@ -105,7 +108,9 @@ def main():
     target_params = pickle.load(open('save/target_params_py3.pkl', 'rb'))
     target_lstm = TARGET_LSTM(vocab_size, BATCH_SIZE, 32, 32, SEQ_LENGTH, START_TOKEN, target_params) # The oracle model
 
-    mediator = Generator(vocab_size, BATCH_SIZE, EMB_DIM*2, HIDDEN_DIM*2, SEQ_LENGTH, START_TOKEN, name="mediator", dropout_rate=M_DROPOUT_RATE, learning_rate=3e-3)
+    mediator = Mediator(vocab_size, BATCH_SIZE, EMB_DIM * 2, HIDDEN_DIM * 2, SEQ_LENGTH, START_TOKEN,
+                        name="mediator", dropout_rate=M_DROPOUT_RATE, learning_rate=3e-3,
+                        with_professor_forcing=False)
 
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
@@ -115,6 +120,7 @@ def main():
     # First, use the oracle model to provide the positive examples, which are sampled from the oracle data distribution
     generate_samples(sess, target_lstm, BATCH_SIZE, generated_num, positive_file)
     gen_data_loader.create_batches(positive_file)
+    gan_data_loader.create_batches(positive_file)
     generate_samples(sess, target_lstm, BATCH_SIZE, generated_num, eval_file)
     val_data_loader.create_batches(eval_file)
 
@@ -124,6 +130,9 @@ def main():
     #  pre-train generator (default 0 epochs)(not recommended)
     print('Start pre-training...')
     log.write('pre-training...\n')
+    saver = tf.train.Saver(tf.global_variables())
+    if RESTORE:
+        saver.restore(sess, "saved_model/CoT")
     for epoch in range(PRE_EPOCH_NUM):
         loss = mle_epoch(sess, generator, gen_data_loader)
         if epoch % 1 == 0:
@@ -164,16 +173,20 @@ def main():
         # Train the mediator
         for _ in range(1):
             bnll_ = []
-            collected_x = []
-            ratio = 1
-            for it in range(ratio):
-                collected_x.extend([gen_data_loader.next_batch(), generator.generate(sess)])
-            collected_x = np.reshape(collected_x, [-1, SEQ_LENGTH])
-            np.random.shuffle(collected_x)
-            collected_x = np.reshape(collected_x, [-1, BATCH_SIZE*2, SEQ_LENGTH])
+            """
+            d_loss_ = []
+            for it in range(3):
+                feed = {
+                    mediator.x0: gan_data_loader.next_batch(),
+                    mediator.x1: generator.generate(sess)
+                }
+                d_loss, _ = sess.run([mediator.d_loss, mediator.d_update], feed)
+                d_loss_.append(d_loss)
+            """
             for it in range(1):
                 feed = {
-                    mediator.x: collected_x[it],
+                    mediator.x0: gen_data_loader.next_batch(),
+                    mediator.x1: generator.generate(sess)
                 }
                 bnll = sess.run(mediator.likelihood_loss, feed)
                 bnll_.append(bnll)
@@ -188,7 +201,7 @@ def main():
             jsd = jsd_calculate(sess, generator, target_lstm)
             print('cooptrain epoch#', iter_idx // gen_data_loader.num_batch, 'jsd ', jsd)
             log_jsd.write("%d\t%f\n" % (iter_idx // gen_data_loader.num_batch, jsd))
-
+            saver.save(sess, "saved_model/CoT")
     log.close()
     log_nll.close()
     log_jsd.close()

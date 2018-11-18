@@ -112,13 +112,12 @@ class Generator(object):
         self.med_log_likelihood = tf.cumsum(tf.reduce_sum(self.rewards * one_hot_x, axis=-1), exclusive=True, axis=-1)
         # pretraining loss
         self.likelihood_loss = -tf.reduce_sum(
-            tf.one_hot(tf.to_int32(tf.reshape(self.x, [-1])), self.num_emb, 1.0, 0.0) * tf.log(
-                tf.clip_by_value(tf.reshape(self.g_predictions, [-1, self.num_emb]), 1e-20, 1.0)
-            )
+            tf.one_hot(tf.to_int32(tf.reshape(self.x, [-1])), self.num_emb, 1.0, 0.0) *
+                tf.reshape(self.log_predictions, [-1, self.num_emb])
         ) / (self.sequence_length * batch_size)
 
         # training updates
-        pretrain_opt = self.g_optimizer(self.learning_rate, beta1=0.9, beta2=0.99)
+        pretrain_opt = self.g_optimizer(self.learning_rate, beta1=0.9, beta2=0.95)
 
 
         self.likelihood_updates = pretrain_opt.minimize(self.likelihood_loss, var_list=self.g_params)
@@ -129,7 +128,7 @@ class Generator(object):
         self.g_loss = -tf.reduce_sum(
             self.g_predictions * (self.rewards - self.log_predictions)
         ) / batch_size / sequence_length
-        g_opt = self.g_optimizer(self.learning_rate, beta1=0.9, beta2=0.99)
+        g_opt = self.g_optimizer(self.learning_rate, beta1=0.9, beta2=0.95)
 
         self.g_updates = g_opt.minimize(self.g_loss, var_list=self.g_params)
 

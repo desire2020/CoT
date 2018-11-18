@@ -1,2 +1,4 @@
 __pycache__
 save/*.txt
+saved_model
+.idea
